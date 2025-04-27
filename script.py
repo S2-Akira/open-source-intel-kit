@@ -3,9 +3,6 @@ import json
 import requests
 from urllib.request import urlopen, Request
 from bs4 import BeautifulSoup
-import os
-import subprocess
-import socket
 import nmap
 import whois
 
@@ -13,7 +10,11 @@ import whois
 BLOOD_RED = "\033[91m"
 BLOOD_GREEN = "\033[92m"
 BLOOD_YELLOW = "\033[93m"
-RESET = "\033[0m"  # Reset color to default
+RESET = "\033[0m"
+
+# --------- Simple Banner ---------
+def banner():
+    print(f"{BLOOD_GREEN}Welcome to S2 OSINT Toolkit v2{RESET}\n")
 
 # --------- Function to Check Email Breach using Dehashed ---------
 def check_email_breach(email):
@@ -39,7 +40,7 @@ def check_email_breach(email):
         print(f"{BLOOD_RED}[!] Error with request: {e}{RESET}")
         return False
 
-# --------- Function to Check Password Breach using Pwned Passwords API ---------
+# --------- Function to Check Password Breach using Pwned Passwords ---------
 def check_password_breach(password):
     sha1_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
     hash_prefix = sha1_hash[:5]
@@ -73,11 +74,12 @@ def get_ip_geolocation(ip_address):
         with urlopen(url) as response:
             if response.status == 200:
                 data = json.load(response)
-                print(f"{BLOOD_GREEN}[✓] Geolocation for IP {ip_address}: {RESET}")
-                print(f"  Country: {data['country']}")
-                print(f"  Region: {data['region']}")
-                print(f"  City: {data['city']}")
-                print(f"  Latitude: {data['loc'].split(',')[0]}, Longitude: {data['loc'].split(',')[1]}")
+                print(f"{BLOOD_GREEN}[✓] Geolocation for IP {ip_address}:{RESET}")
+                print(f"  Country: {data.get('country', 'N/A')}")
+                print(f"  Region: {data.get('region', 'N/A')}")
+                print(f"  City: {data.get('city', 'N/A')}")
+                loc = data.get('loc', '0,0').split(',')
+                print(f"  Latitude: {loc[0]}, Longitude: {loc[1]}")
                 return data
             else:
                 print(f"{BLOOD_RED}[!] Error fetching geolocation for {ip_address}{RESET}")
@@ -86,7 +88,7 @@ def get_ip_geolocation(ip_address):
         print(f"{BLOOD_RED}[!] Error with IP Geolocation request: {e}{RESET}")
         return None
 
-# --------- Username Search (Checking multiple platforms) ---------
+# --------- Username Search ---------
 def search_username(username):
     platforms = {
         "Twitter": f"https://twitter.com/{username}",
@@ -104,12 +106,10 @@ def search_username(username):
             with urlopen(url) as response:
                 if response.status == 200:
                     print(f"{BLOOD_GREEN}[✓] Found '{username}' on {platform}.{RESET}")
-                else:
-                    print(f"{BLOOD_RED}[✖] '{username}' not found on {platform}.{RESET}")
-        except Exception as e:
-            print(f"{BLOOD_RED}[!] Error while checking {platform} for username {username}: {e}{RESET}")
+        except Exception:
+            print(f"{BLOOD_RED}[✖] '{username}' not found on {platform}.{RESET}")
 
-# --------- Domain Scan using VirusTotal ---------
+# --------- VirusTotal Domain Scan ---------
 def scan_domain(domain):
     headers = {"x-apikey": "YOUR_VIRUSTOTAL_API_KEY"}
     
@@ -120,20 +120,29 @@ def scan_domain(domain):
             data = response.json()
             domain_info = data.get('data', {})
             if domain_info:
-                domain_status = domain_info.get('attributes', {}).get('last_analysis_stats', {})
+                stats = domain_info.get('attributes', {}).get('last_analysis_stats', {})
                 print(f"{BLOOD_GREEN}[✓] Domain Scan Results for '{domain}':{RESET}")
-                print(f"- Harmless: {domain_status.get('harmless', 0)}")
-                print(f"- Malicious: {domain_status.get('malicious', 0)}")
-                if domain_status.get('malicious', 0) > 0:
-                    print(f"{BLOOD_RED}[!] Warning: This domain has malicious activity!{RESET}")
+                print(f"- Harmless: {stats.get('harmless', 0)}")
+                print(f"- Malicious: {stats.get('malicious', 0)}")
+                if stats.get('malicious', 0) > 0:
+                    print(f"{BLOOD_RED}[!] Warning: Malicious activity detected!{RESET}")
                 else:
-                    print(f"{BLOOD_GREEN}[✓] This domain is safe!{RESET}")
+                    print(f"{BLOOD_GREEN}[✓] Domain appears safe.{RESET}")
         else:
             print(f"{BLOOD_RED}[!] Error accessing VirusTotal API: {response.status_code}{RESET}")
     except Exception as e:
-        print(f"{BLOOD_RED}[!] Error with the domain scan: {e}{RESET}")
+        print(f"{BLOOD_RED}[!] Error scanning domain: {e}{RESET}")
 
-# --------- Fake Account Check for Social Media ---------
+# --------- WHOIS Lookup ---------
+def whois_lookup(domain):
+    try:
+        info = whois.whois(domain)
+        print(f"{BLOOD_GREEN}[✓] WHOIS Info for '{domain}':{RESET}")
+        print(info)
+    except Exception as e:
+        print(f"{BLOOD_RED}[!] WHOIS lookup error: {e}{RESET}")
+
+# --------- Fake Account Check ---------
 def check_fake_account(username, platform):
     urls = {
         "Instagram": f"https://www.instagram.com/{username}/?__a=1",
@@ -152,52 +161,51 @@ def check_fake_account(username, platform):
                 data = response.json()
                 user_data = data['graphql']['user']
                 if not user_data.get('biography'):
-                    print(f"{BLOOD_RED}[!] Missing bio. This may indicate a fake account.{RESET}")
+                    print(f"{BLOOD_RED}[!] Missing bio - possible fake account.{RESET}")
                 if not user_data.get('profile_pic_url_hd'):
-                    print(f"{BLOOD_RED}[!] Missing profile image. This may indicate a fake account.{RESET}")
+                    print(f"{BLOOD_RED}[!] Missing profile picture - possible fake account.{RESET}")
                 if user_data['edge_followed_by']['count'] < 10:
-                    print(f"{BLOOD_RED}[!] Low follower count. This may indicate a fake account.{RESET}")
+                    print(f"{BLOOD_RED}[!] Very low followers - possible fake account.{RESET}")
             elif platform == "Twitter":
                 soup = BeautifulSoup(response.text, 'html.parser')
                 bio = soup.find('div', {'class': 'ProfileHeaderCard-bio'})
                 if not bio:
-                    print(f"{BLOOD_RED}[!] Missing bio. This may indicate a fake account.{RESET}")
-                profile_image = soup.find('img', {'class': 'ProfileAvatar-image'})['src']
-                if not profile_image:
-                    print(f"{BLOOD_RED}[!] Missing profile image. This may indicate a fake account.{RESET}")
+                    print(f"{BLOOD_RED}[!] Missing bio on Twitter profile.{RESET}")
         else:
-            print(f"{BLOOD_RED}[!] Error fetching data from {platform} for {username}: {response.status_code}{RESET}")
+            print(f"{BLOOD_RED}[!] Error fetching {platform} profile: {response.status_code}{RESET}")
     except Exception as e:
-        print(f"{BLOOD_RED}[!] Error checking fake account: {e}{RESET}")
+        print(f"{BLOOD_RED}[!] Fake account check error: {e}{RESET}")
 
-# --------- Server-level Scanning (Port Scan, etc.) ---------
+# --------- Server-level Scan (Port Scanning) ---------
 def server_scan(ip):
     nm = nmap.PortScanner()
-    nm.scan(ip, '1-1024')  # Scan ports 1-1024
-    
-    print(f"{BLOOD_GREEN}[✓] Scanning {ip} for open ports:{RESET}")
+    nm.scan(ip, '1-1024')
+
+    print(f"{BLOOD_GREEN}[✓] Open ports on {ip}:{RESET}")
     for host in nm.all_hosts():
         print(f"Host: {host} ({nm[host].hostname()})")
         for proto in nm[host].all_protocols():
             print(f"  Protocol: {proto}")
-            lport = nm[host][proto].keys()
-            for port in lport:
-                print(f"    Port: {port} -> State: {nm[host][proto][port]['state']}")
+            ports = nm[host][proto].keys()
+            for port in ports:
+                print(f"    Port: {port} -> {nm[host][proto][port]['state']}")
 
 # --------- Main Menu ---------
 def main_menu():
+    banner()
     while True:
-        print(f"{BLOOD_GREEN}Welcome to the Ultimate OSINT Toolkit!{RESET}")
-        print(f"{BLOOD_RED}1. Check Email Breach{RESET}")
-        print(f"{BLOOD_RED}2. Check Password Breach{RESET}")
-        print(f"{BLOOD_RED}3. Get IP Geolocation{RESET}")
-        print(f"{BLOOD_RED}4. Username Search (Across Platforms){RESET}")
-        print(f"{BLOOD_RED}5. Scan Domain using VirusTotal{RESET}")
-        print(f"{BLOOD_RED}6. Fake Account Check{RESET}")
-        print(f"{BLOOD_RED}7. Server-level Scan{RESET}")
-        print(f"{BLOOD_RED}8. Exit{RESET}")
-        
-        choice = input(f"{BLOOD_YELLOW}Enter your choice (1-8): {RESET}")
+        print(f"{BLOOD_GREEN}Main Menu{RESET}")
+        print(f"{BLOOD_RED}1.{RESET} Check Email Breach")
+        print(f"{BLOOD_RED}2.{RESET} Check Password Breach")
+        print(f"{BLOOD_RED}3.{RESET} Get IP Geolocation")
+        print(f"{BLOOD_RED}4.{RESET} Username Search")
+        print(f"{BLOOD_RED}5.{RESET} Scan Domain (VirusTotal)")
+        print(f"{BLOOD_RED}6.{RESET} WHOIS Lookup")
+        print(f"{BLOOD_RED}7.{RESET} Fake Account Check")
+        print(f"{BLOOD_RED}8.{RESET} Server Scan (Nmap)")
+        print(f"{BLOOD_RED}9.{RESET} Exit")
+
+        choice = input(f"{BLOOD_YELLOW}Enter your choice (1-9): {RESET}")
         
         if choice == "1":
             email = input("Enter Email: ")
@@ -215,16 +223,21 @@ def main_menu():
             domain = input("Enter Domain: ")
             scan_domain(domain)
         elif choice == "6":
+            domain = input("Enter Domain for WHOIS Lookup: ")
+            whois_lookup(domain)
+        elif choice == "7":
             platform = input("Enter Platform (Instagram/Twitter): ")
             username = input("Enter Username: ")
             check_fake_account(username, platform)
-        elif choice == "7":
-            ip = input("Enter IP Address: ")
-            server_scan(ip)
         elif choice == "8":
+            ip = input("Enter IP Address for server scan: ")
+            server_scan(ip)
+        elif choice == "9":
+            print(f"{BLOOD_GREEN}Goodbye!{RESET}")
             break
         else:
-            print(f"{BLOOD_RED}[!] Invalid choice. Please try again.{RESET}")
+            print(f"{BLOOD_RED}[!] Invalid choice. Try again.{RESET}")
 
 if __name__ == "__main__":
     main_menu()
+
